@@ -257,10 +257,7 @@ def visualizeSynapseConnectionTable(connectionTable, title="PAM-PAM Synapse Stat
     # Fine-tuning appearance
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    if settingsSpec is not None:
-        fig.text(0.5, 0.01, settingsSpec, wrap=True, horizontalalignment='center', fontsize=8, color='grey')
-    if ax is None:
-        plt.show()
+
 
 def plotPAMStatistic(targets, targetMode = "type",etcTreshhold=0.03, partnerMode="type", connections=filteredConnections, normalized=True, title="PAM-PAM Connections Statistic", mergePAMSubtypes=False, mergePAMs=False, mergeOthers=True, yLabel="% of synaptic connections", color_dict=PAM_colors,settingsSpec="", ax = None):
     """
@@ -557,8 +554,8 @@ class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
             settingsSpec=settings_spec,
             ax=ax
         )
-        self.figure1.subplots_adjust(left=0.1, right=0.8)  # Adjust these values as needed
-        self.figure2.subplots_adjust(left=0.1, right=0.8)  # Adjust these values as needed
+        self.figure1.subplots_adjust(left=0.15, right=0.8)  # Adjust these values as needed
+        self.figure2.subplots_adjust(left=0.15, right=0.8)  # Adjust these values as needed
 
         self.canvas1.draw()  # Render the plot
         self.canvas2.draw()  # Render the plot
