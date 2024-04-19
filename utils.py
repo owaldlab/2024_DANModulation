@@ -17,7 +17,7 @@ import re
 
 ## function that retrieves specified connections via neuprint
 
-def getFilteredConnections(typeA="^PAM.*", typeB="^PAM.*", minWeight=1, silent=True):
+def getFilteredConnections(typeA="^PAM.*", typeB="^PAM.*", minWeight=1, silent=True,bidirectional=False):
     """
     Retrieves connections between neurons of specified types with a minimum synaptic weight from the Neuprint database.
 
@@ -30,8 +30,17 @@ def getFilteredConnections(typeA="^PAM.*", typeB="^PAM.*", minWeight=1, silent=T
     Returns:
         pandas.DataFrame: A dataframe containing the filtered connections with a weight greater than or equal to minWeight.
     """
-    neuron_df, conn_df = fetch_adjacencies(NC(status='Traced', type=typeA, regex=True), NC(status='Traced', type=typeB, regex=True))
-    conn_df = neu.merge_neuron_properties(neuron_df, conn_df, ['type', 'instance'])
+    if bidirectional == True:
+        neuron_dfAB, conn_dfAB = fetch_adjacencies(NC(status='Traced', type=typeA, regex=True), NC(status='Traced', type=typeB, regex=True))
+        conn_dfAB = neu.merge_neuron_properties(neuron_dfAB, conn_dfAB, ['type', 'instance'])
+        neuron_dfBA, conn_dfBA = fetch_adjacencies(NC(status='Traced', type=typeB, regex=True), NC(status='Traced', type=typeA, regex=True))
+        conn_dfBA = neu.merge_neuron_properties(neuron_dfBA, conn_dfBA, ['type', 'instance'])
+        conn_df = pd.concat([conn_dfAB, conn_dfBA]).drop_duplicates()
+
+    if bidirectional == False:
+        neuron_df, conn_df = fetch_adjacencies(NC(status='Traced', type=typeA, regex=True), NC(status='Traced', type=typeB, regex=True))
+        conn_df = neu.merge_neuron_properties(neuron_df, conn_df, ['type', 'instance'])
+
     filteredConnections = conn_df[conn_df['weight'] >= minWeight]
     filteredConnections.sort_values('weight', ascending=False, inplace=True)
     if not silent:
@@ -223,6 +232,7 @@ def visualizeSynapseConnectionTable(connectionTable, title="PAM-PAM Synapse Stat
         fig, ax = plt.subplots(figsize=(6, 6))
         gui = False
     else:
+        gui = True
         fig = ax.figure
     
     bar_width = 0.85  # Width of each bar
@@ -302,3 +312,91 @@ def plotPAMStatistic(targets, targetMode = "type",etcTreshhold=0.03, partnerMode
         xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - axonal outputs" + pamMerged, color_dict=color_dict,settingsSpec=settingsSpec,ax=ax2)
 
 
+### functions for organizing and classifying synaptic connections
+
+def collapseNeuronNames(dataframe, patterns=["KC", "MBON"], targets=["type", "instance"], sides=["pre", "post"], suffix = "s"):
+    """
+    Collapse neuron names in a dataframe based on specified patterns.
+
+    This function modifies the input dataframe by replacing neuron names that contain
+    any of the specified patterns with a shortened name (pattern + 's').
+
+    Parameters:
+    - dataframe (pd.DataFrame): The dataframe containing neuron data.
+    - patterns (list of str): Patterns to match for collapsing neuron names.
+    - targets (list of str): Column name parts to apply the patterns to ('type', 'instance').
+    - sides (list of str): Suffixes of the column names to which the patterns will be applied ('pre', 'post').
+
+    Returns:
+    - pd.DataFrame: The function returns the modified dataframe.
+    """
+
+    for pattern in patterns:
+        replacement = pattern + suffix
+        for target in targets:
+            if sides != None:
+                for side in sides:
+                    dataframe[target + "_" + side] = dataframe[target + "_" + side].replace(
+                    to_replace=r'.*' + pattern + r'.*', value=replacement, regex=True)
+            else:
+                dataframe[target] = dataframe[target].replace(
+                to_replace=r'.*' + pattern + r'.*', value=replacement, regex=True)
+    return dataframe
+
+def decimateConnections(connections, percentage=10):
+    """
+    Reduces the number of connections in a DataFrame to a specified percentage by random selection.
+
+    Parameters:
+    - connections (pd.DataFrame): The DataFrame containing connection data.
+    - percentage (int): The percentage of connections to retain.
+
+    Returns:
+    - pd.DataFrame: A new DataFrame containing only the specified percentage of connections.
+    """
+    if not 0 <= percentage <= 100:
+        raise ValueError("Percentage must be between 0 and 100.")
+
+    # Calculate the number of connections to retain
+    retain_count = int(len(connections) * (percentage / 100.0))
+
+    # Randomly select a subset of connections
+    decimated_connections = connections.sample(n=retain_count)
+
+    return decimated_connections
+
+def classify_connections(connections, types=["PAM", "KC", "MBON"]):
+    """
+    Classify connections based on neuron types, subtypes, instances, and body IDs.
+
+    This function adds a 'classification' column to the 'connections' DataFrame, which
+    indicates the level of similarity between the pre- and post-synaptic neurons.
+    The classification is an integer where:
+    - 0 indicates no match,
+    - 1 indicates a match of supertype (e.g., PAM -> PAM),
+    - 2 indicates a match of types (e.g., PAM01 -> PAM01),
+    - 3 indicates a match of instances (e.g., PAM05(B1ped)_L -> PAM05(B1ped)_L),
+    - 4 indicates a match of body IDs.
+
+    Parameters:
+    - connections (pd.DataFrame): DataFrame containing connection data with 'type_pre',
+      'type_post', 'instance_pre', 'instance_post', 'bodyId_pre', and 'bodyId_post' columns.
+    - types (list of str): List of neuron types to check for matches. Default is ["PAM", "KC", "MBON"].
+
+    Returns:
+    - pd.DataFrame: The modified DataFrame with an additional 'classification' column.
+    """
+    connections['classification'] = 0
+    def get_classification(row):
+        if row['bodyId_pre'] == row['bodyId_post']:
+            return 4
+        elif row['instance_pre'] == row['instance_post']:
+            return 3
+        elif row['type_pre'] == row['type_post']:
+            return 2
+        elif any(row['type_pre'].startswith(t) and row['type_post'].startswith(t) for t in types):
+            return 1
+        else:
+            return 0
+    connections['classification'] = connections.apply(get_classification, axis=1)
+    return connections

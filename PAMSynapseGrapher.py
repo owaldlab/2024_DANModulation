@@ -33,6 +33,7 @@ client = neu.Client('https://neuprint.janelia.org/', dataset='hemibrain:v1.2.1',
 
 ### get PAM-PAM connections
 filteredConnections = getFilteredConnections(silent=False)
+
 ### retrieving all connections between PAM and non-PAM neurons
 filteredPAMConnections = getFilteredConnections("^PAM.*","^.*", minWeight=1)
 
