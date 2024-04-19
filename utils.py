@@ -263,7 +263,7 @@ def visualizeSynapseConnectionTable(connectionTable, title="PAM-PAM Synapse Stat
             plt.show()
 
 
-def plotPAMStatistic(targets, targetMode = "type",etcTreshhold=0.03, partnerMode="type", connections=None, normalized=True, title="PAM-PAM Connections Statistic", mergePAMSubtypes=False, mergePAMsupertype=False, mergeOthers=True, yLabel="% of synaptic connections", color_dict=PAM_colors,settingsSpec="", ax = None):
+def plotPAMStatistic(targets, targetMode = "type",etcTreshhold=0.03, partnerMode="type", connections=None, normalized=True, title="PAM-PAM Connections Statistic", mergePAMSubtypes=False, mergePAMsupertype=False, mergeOthers=True, yLabel="% of synaptic connections", color_dict=PAM_colors,settingsSpec="", ax = None,weightFilterThreshhold=1):
     """
     Plots PAM synapse statistics for a given set of targets.
     
@@ -280,7 +280,10 @@ def plotPAMStatistic(targets, targetMode = "type",etcTreshhold=0.03, partnerMode
     - mergeOthers: Boolean indicating whether to merge other neuron types.
     - yLabel: The label for the y-axis.
     - color_dict: Dictionary mapping synapse types to colors.
+    - weightFilterThreshhold: Filters out any connection with weight beneath threshhold. Use cautiously as >50% of connections have weight 1 in many cases.
     """
+    if weightFilterThreshhold > 1:
+        connections = connections[connections['weight']>weightFilterThreshhold]
     if not isinstance(connections, pd.DataFrame):
         raise ValueError("No connections dataframe passed.")
     pamMerged = ""

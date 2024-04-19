@@ -35,7 +35,7 @@ client = neu.Client('https://neuprint.janelia.org/', dataset='hemibrain:v1.2.1',
 filteredConnections = getFilteredConnections(silent=False)
 
 ### retrieving all connections between PAM and non-PAM neurons
-filteredPAMConnections = getFilteredConnections("^PAM.*","^.*", minWeight=1)
+filteredPAMConnections = getFilteredConnections("^PAM.*","^.*", minWeight=1,bidirectional=True)
 
 
 # Define the possible targets by type
@@ -202,8 +202,10 @@ class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
 
         # Etc Threshold Float Text
         self.etc_threshhold_floattext = QtWidgets.QDoubleSpinBox()
+        self.etc_threshhold_floattext.setDecimals(3)
+        self.etc_threshhold_floattext.setSingleStep(0.001)
         self.etc_threshhold_floattext.setValue(0.02)
-        self.etc_threshhold_floattext.setSuffix(' Etc Threshhold')
+        self.etc_threshhold_floattext.setSuffix(' Etc Threshold')
 
         # Normalized Checkbox
         self.normalized_checkbox = QtWidgets.QCheckBox('Normalized')
