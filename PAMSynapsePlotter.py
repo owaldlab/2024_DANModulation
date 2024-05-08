@@ -26,7 +26,7 @@ import os
 load_dotenv()
 
 ## fetching Janelia client
-#client = neu.Client('https://neuprint.janelia.org/', dataset='hemibrain:v1.2.1', token=os.environ.get("JANELIA_PAT"))
+client = neu.Client('https://neuprint.janelia.org/', dataset='hemibrain:v1.2.1', token=os.environ.get("JANELIA_PAT"))
 
 ## load relevant data frames
 all_neurons = loadPickle('all_neurons')
@@ -41,10 +41,10 @@ all_PAM_All_presynapses = neu.merge_neuron_properties(all_neurons,all_PAM_All_pr
 all_PAM_All_postsynapses = neu.merge_neuron_properties(all_neurons,all_PAM_All_postsynapses,properties=["type", "instance"])
 
 print("Loading MB outlines.")
-#MB_outlines_xz = getAnatomicalOutlines("MB")
-#MB_outlines_xy = getAnatomicalOutlines("MB",'xy')
-MB_outlines_xz = None
-MB_outlines_xy = None
+MB_outlines_xz = getAnatomicalOutlines("MB")
+MB_outlines_xy = getAnatomicalOutlines("MB",'xy')
+#MB_outlines_xz = None
+#MB_outlines_xy = None
 print("Finished loading MB outlines.")
 
 
