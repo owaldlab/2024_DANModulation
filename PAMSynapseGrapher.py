@@ -8,6 +8,7 @@ import matplotlib as mpl
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 
 
+
 import navis.interfaces.neuprint as neu
 from navis.interfaces.neuprint import NeuronCriteria as NC, SynapseCriteria as SC
 from navis.interfaces.neuprint import fetch_adjacencies, fetch_synapse_connections
@@ -17,7 +18,7 @@ from PyQt5 import QtWidgets, QtCore
 
 import re
 
-from utils import getFilteredConnections, plotPAMStatistic 
+from utils import loadConnections, plotPAMStatistic, getROIs
 
 
 ## setting up Neuprint Client
@@ -32,10 +33,10 @@ client = neu.Client('https://neuprint.janelia.org/', dataset='hemibrain:v1.2.1',
 
 
 ### get PAM-PAM connections
-filteredConnections = getFilteredConnections(silent=False)
+PAM_PAM_Connections = loadConnections(silent=False)
 
 ### retrieving all connections between PAM and non-PAM neurons
-filteredPAMConnections = getFilteredConnections("^PAM.*","^.*", minWeight=1,bidirectional=True)
+PAM_All_Connections = loadConnections("^PAM.*","^.*",bidirectional=True)
 
 
 # Define the possible targets by type
@@ -164,6 +165,9 @@ class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
 
         # Create the UI components
 
+
+        data_selection_label = QtWidgets.QLabel("DATA SELECTION")
+
         # Visualization Mode Radio Buttons
         self.vis_mode_radio = QtWidgets.QButtonGroup()
         vis_mode_label = QtWidgets.QLabel("Visualization Mode:")
@@ -182,12 +186,25 @@ class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
         self.target_mode_radio.addButton(instance_radio, id=1)
         type_radio.setChecked(True)
 
+        # Data Filter Radio Buttons 
+        data_filtering_label = QtWidgets.QLabel("Data Filtering:")
+        self.data_filtering_radio = QtWidgets.QButtonGroup()
+        all_synapses_radio = QtWidgets.QRadioButton('Show all')
+        onlymb_synapses_radio = QtWidgets.QRadioButton('Only within MB')
+        outsidemb_synapses_radio = QtWidgets.QRadioButton('Only outside MB')
+        self.data_filtering_radio.addButton(all_synapses_radio, id=0)
+        self.data_filtering_radio.addButton(onlymb_synapses_radio, id=1)
+        self.data_filtering_radio.addButton(outsidemb_synapses_radio, id=2)
+        all_synapses_radio.setChecked(True)
+
         # Targets List Widget
         self.targets_list_widget = QtWidgets.QListWidget()
+        target_list_label = QtWidgets.QLabel("Neuron groups by type:")
         self.targets_list_widget.setSelectionMode(QtWidgets.QAbstractItemView.MultiSelection)
         self.targets_list_widget.addItems(possibleTargetsType.keys())
 
         # Partner Type Radio Buttons
+        partner_categorization_label = QtWidgets.QLabel("PARTNER CATEGORIZATION")
         self.partner_type_radio = QtWidgets.QButtonGroup()
         partner_type_label = QtWidgets.QLabel("Partner Type:")
         type_partner_radio = QtWidgets.QRadioButton('type')
@@ -215,19 +232,36 @@ class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
         self.update_button.clicked.connect(self.update_plot)
 
         # Add the settings widgets to the settings layout with titles
+        
+        settings_layout.addWidget(self.normalized_checkbox)
+
+        ## data selection
+        settings_layout.addWidget(data_selection_label)
         settings_layout.addWidget(vis_mode_label)
         settings_layout.addWidget(pam_pam_synapses_radio)
         settings_layout.addWidget(all_pam_synapses_radio)
         settings_layout.addWidget(target_mode_label)
         settings_layout.addWidget(type_radio)
         settings_layout.addWidget(instance_radio)
+  
+        settings_layout.addWidget(target_list_label)
         settings_layout.addWidget(self.targets_list_widget)
+
+        ## data filtering 
+        settings_layout.addWidget(data_filtering_label)
+        settings_layout.addWidget(all_synapses_radio)
+        settings_layout.addWidget(onlymb_synapses_radio)
+        settings_layout.addWidget(outsidemb_synapses_radio)
+
+        
+        ## partner visualization settings
+        settings_layout.addWidget(partner_categorization_label)
         settings_layout.addWidget(partner_type_label)
         settings_layout.addWidget(type_partner_radio)
         settings_layout.addWidget(instance_partner_radio)
         settings_layout.addWidget(self.merge_pam_types_checkbox)
         settings_layout.addWidget(self.etc_threshhold_floattext)
-        settings_layout.addWidget(self.normalized_checkbox)
+
         settings_layout.addWidget(self.update_button)
         # Create a widget to hold the settings layout and add it to the main layout
         settings_widget = QtWidgets.QWidget()
@@ -263,9 +297,20 @@ class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
     # Function to call plotPAMStatistic with the selected values
     def update_plot(self):
         vis_mode = 'PAM-PAM synapses' if self.vis_mode_radio.checkedId() == 0 else 'All PAM synapses'
-        conn = filteredPAMConnections if vis_mode == 'All PAM synapses' else filteredConnections
+        conn = PAM_All_Connections if vis_mode == 'All PAM synapses' else PAM_PAM_Connections
         settings_spec = "Visualization mode: " + vis_mode + ", "
         selected_targets = [item.text() for item in self.targets_list_widget.selectedItems()]
+
+        ### 0 for all synapses, 1 for within MB, 2 for outside MB
+        data_filtering_mode = self.data_filtering_radio.checkedId()
+
+        if data_filtering_mode == 1:
+            filter = getROIs("MB","regexOr")
+            conn = conn[conn['roi'].str.contains(filter, case=False)]
+        if data_filtering_mode == 2:
+            filter = getROIs("nonMB","regexOr")
+            conn = conn[conn['roi'].str.contains(filter, case=False)]
+
 
         # Clear the previous figures
         self.figure1.clear()

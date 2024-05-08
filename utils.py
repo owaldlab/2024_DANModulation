@@ -12,12 +12,17 @@ from navis.interfaces.neuprint import fetch_adjacencies, fetch_synapse_connectio
 from neuprint import fetch_synapses, NeuronCriteria as NC, SynapseCriteria as SC
 from PyQt5 import QtWidgets, QtCore
 
-import re
+from bokeh.plotting import figure, show, output_notebook
+from bokeh.models import Title
+import numpy as np
 
+import pickle
+
+import re
 
 ## function that retrieves specified connections via neuprint
 
-def getFilteredConnections(typeA="^PAM.*", typeB="^PAM.*", minWeight=1, silent=True,bidirectional=False):
+def loadConnections(typeA="^PAM.*", typeB="^PAM.*", silent=True,bidirectional=False, cached = True):
     """
     Retrieves connections between neurons of specified types with a minimum synaptic weight from the Neuprint database.
 
@@ -30,6 +35,19 @@ def getFilteredConnections(typeA="^PAM.*", typeB="^PAM.*", minWeight=1, silent=T
     Returns:
         pandas.DataFrame: A dataframe containing the filtered connections with a weight greater than or equal to minWeight.
     """
+    try:
+        #### hackily handles most common case where PAM-PAM or PAM-All connections are requested, loading them from pre-created pickle
+        if typeA=="^PAM.*" and typeB=="^PAM.*" and cached:
+            with open('pickles/PAM_All_Connections.pkl', 'rb') as file:
+                PAM_PAM_Connections = pickle.load(file)
+            return PAM_PAM_Connections
+        if typeA=="^PAM.*" and typeB=="^.*" and cached:
+            with open('pickles/PAM_All_Connections.pkl', 'rb') as file:
+                PAM_All_Connections = pickle.load(file)
+            return PAM_All_Connections
+    except Exception:
+        print("Warning, no Pickle files found.")
+        
     if bidirectional == True:
         neuron_dfAB, conn_dfAB = fetch_adjacencies(NC(status='Traced', type=typeA, regex=True), NC(status='Traced', type=typeB, regex=True))
         conn_dfAB = neu.merge_neuron_properties(neuron_dfAB, conn_dfAB, ['type', 'instance'])
@@ -41,19 +59,23 @@ def getFilteredConnections(typeA="^PAM.*", typeB="^PAM.*", minWeight=1, silent=T
         neuron_df, conn_df = fetch_adjacencies(NC(status='Traced', type=typeA, regex=True), NC(status='Traced', type=typeB, regex=True))
         conn_df = neu.merge_neuron_properties(neuron_df, conn_df, ['type', 'instance'])
 
-    filteredConnections = conn_df[conn_df['weight'] >= minWeight]
-    filteredConnections.sort_values('weight', ascending=False, inplace=True)
+    loadedConnections = conn_df[conn_df['weight']]
+    loadedConnections.sort_values('weight', ascending=False, inplace=True)
     if not silent:
         print(neuron_df)
         print(conn_df)
 
-    return filteredConnections
+    return loadedConnections
 
 
-#### functions to extract axons and dendrites of a specific neuron type, and extract unique connection partners
+def loadPickle(name, rel_path="pickles/"):
+    with open('pickles/'+name+'.pkl', 'rb') as file:
+        dataframe = pickle.load(file)
+    return dataframe
 
-### extracts dendrites and axons for a specific PAM type and returns them as a dataframe
-def extractDendritesPerType(target = "PAM05", targetMode = 'type', connections=None):
+
+#### functions to extract inputs and outputs of a specific neuron type, and extract unique connection partners
+def extractInputsPerType(target = "PAM05", targetMode = 'type', connections=None):
     if not isinstance(connections, pd.DataFrame):
         raise ValueError("No connections dataframe passed.")
     if targetMode == "type":
@@ -62,12 +84,10 @@ def extractDendritesPerType(target = "PAM05", targetMode = 'type', connections=N
     if targetMode == "instance":
         target_pattern = target
         regex=False
-    dendrites = connections[connections[targetMode+'_post'].str.contains(target_pattern, regex=regex)]
-    #print(dendrites)
-    return dendrites
+    inputs = connections[connections[targetMode+'_post'].str.contains(target_pattern, regex=regex)]
+    return inputs
 
-### extracts dendrites and axons for a specific PAM type and returns them as a dataframe
-def extractAxonsPerType(target = "PAM05", targetMode = 'type', connections=None):
+def extractOutputsPerType(target = "PAM05", targetMode = 'type', connections=None):
     if not isinstance(connections, pd.DataFrame):
         raise ValueError("No connections dataframe passed.")
     if targetMode == "type":
@@ -76,9 +96,8 @@ def extractAxonsPerType(target = "PAM05", targetMode = 'type', connections=None)
     if targetMode == "instance":
         target_pattern = target
         regex=False
-    axons = connections[connections[targetMode+'_pre'].str.contains(target_pattern, regex=regex)]
-    #print(axons)
-    return axons
+    outputs = connections[connections[targetMode+'_pre'].str.contains(target_pattern, regex=regex)]
+    return outputs
 
 def listUniqueConnectionPartners(connections, type = "pre", printOut = True):
     typePartners = extractUniqueConnectionPartners(connections,type=type,partnerType="type",mergePAMSubtypes=True)
@@ -143,7 +162,7 @@ def collapseConnections(connections, type="pre", partnerMode="type",mergePAMSubt
     return grouped.sort_values('total_weight', ascending=False)
 
 ### for each target in targets, this extracts weights of synaptic connections in each neuron type called 'target'
-def extractUniquePartnerConnectionStrengthIterated(targets, targetMode='type', connections=None,type="pre", partnerMode="type",connectionType = "dendrites", normalized = True, etc = True, etcTreshhold=0.03,mergePAMSubtypes=False, mergeOthers = True):
+def extractUniquePartnerConnectionStrengthIterated(targets, targetMode='type', connections=None,type="pre", partnerMode="type",connectionType = "inputs", normalized = True, etc = True, etcTreshhold=0.03,mergePAMSubtypes=False, mergeOthers = True):
     if not isinstance(connections, pd.DataFrame):
         raise ValueError("No connections dataframe passed.")
     connectionsTable = pd.DataFrame()
@@ -173,13 +192,13 @@ def extractUniquePartnerConnectionStrengthIterated(targets, targetMode='type', c
     return connectionsTable
 
 ### extract weights of synaptic connections per types in the neuron type called 'target'
-def extractUniquePartnerConnectionStrength(target, targetMode = 'type', connections=None, type="pre", partnerMode="type",connectionType = "dendrites", normalized = True, etc = True, etcTreshhold=0.03, mergePAMSubtypes=False, mergePAMsupertype = False, mergeOthers = True):
+def extractUniquePartnerConnectionStrength(target, targetMode = 'type', connections=None, type="pre", partnerMode="type",connectionType = "inputs", normalized = True, etc = True, etcTreshhold=0.03, mergePAMSubtypes=False, mergePAMsupertype = False, mergeOthers = True):
     if not isinstance(connections, pd.DataFrame):
         raise ValueError("No connections dataframe passed.")
-    if connectionType == "dendrites":
-        conn = extractDendritesPerType(target,targetMode=targetMode, connections=connections)
-    if connectionType == "axons":
-        conn = extractAxonsPerType(target,targetMode=targetMode,connections=connections)
+    if connectionType == "inputs":
+        conn = extractInputsPerType(target,targetMode=targetMode, connections=connections)
+    if connectionType == "outputs":
+        conn = extractOutputsPerType(target,targetMode=targetMode,connections=connections)
     targetConnections = collapseConnections(conn, type=type, partnerMode=partnerMode, mergePAMSubtypes = mergePAMSubtypes, mergePAMsupertype = mergePAMsupertype, mergeOthers = mergeOthers)
     targetConnections = targetConnections.rename(columns={'total_weight': target})
     return targetConnections
@@ -211,6 +230,32 @@ PAM_colors = {
 
 def getPAMcolors():
     return PAM_colors
+
+MB_rois=["a'L(R)","aL(R)","b'L(R)","bL(R)","gL(R)","CA(L)","a'L(L)","aL(L)","b'L(L)","bL(L)","gL(L)", "CA(R)", "PED(R)"]
+non_MB_rois=["CRE(L)", "CRE(R)", "EB", "LAL(R)", "SIP(L)", "SIP(R)", "SLP(R)", "SMP(L)", "SMP(R)", "LAL(L)"]
+
+def getROIs(ROI = "", mode = "array"):
+    """
+        Returns a specific set of ROIs.
+        Parameters:
+            (string) ROI: Specify ROI set, e.g. "MB" or "non_MB".
+            (string) mode: Specify the formatting of the ROIs. Defaults to "array", an array of strings. "regexOr" returns a single string of all ROIs separated by the '|' character.     
+    """
+    roi = None
+    if ROI == "MB":
+        rois = MB_rois
+    if ROI == "non_MB" or ROI == "non MB" or ROI == "non-MB" or ROI == "nonMB":
+        rois = non_MB_rois
+    
+    if mode=="array":
+        return rois
+    if mode == "regexOr":
+        roiString = rois[0]
+        roiString = re.sub(r'[\(\)]', lambda x: "\\" + x.group(), roiString)
+        for roi in rois[1:]:
+            roi = re.sub(r'[\(\)]', lambda x: "\\" + x.group(), roi)
+            roiString += "|" + roi
+        return roiString
 
 def visualizeSynapseConnectionTable(connectionTable, title="PAM-PAM Synapse Statistic", titleSuffix="", xLabel="None", yLabel='None', color_dict=PAM_colors, legend_title="", settingsSpec=None, ax = None):
     """
@@ -300,19 +345,19 @@ def plotPAMStatistic(targets, targetMode = "type",etcTreshhold=0.03, partnerMode
     if mergePAMsupertype:
         mergePAMSubtypes = False
     settingsSpec = settingsSpec+f"Target Mode: {targetMode}, Partner Mode: {partnerMode}, Threshold: {etcTreshhold:.4f},  {'Normalized' if normalized else 'Not Normalized'}, Merge PAM subtypes: {'Yes' if mergePAMSubtypes else 'No'}, Merge PAMs: {'Yes' if mergePAMsupertype else 'No'}, Merge Others: {'Yes' if mergeOthers else 'No'}"
-    # Extract dendrite connections for PAMs 01-06
-    connectionType = "dendrites"
+    # Extract input connections
+    connectionType = "inputs"
     type = "pre"
     visualizeSynapseConnectionTable(
         extractUniquePartnerConnectionStrengthIterated(targets, targetMode=targetMode,connections=connections, connectionType=connectionType, type=type, partnerMode=partnerMode, etcTreshhold=etcTreshhold, normalized=normalized, mergePAMSubtypes=mergePAMSubtypes, mergeOthers=mergeOthers),
-        xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - dendritic inputs" + pamMerged, color_dict=color_dict, settingsSpec=settingsSpec,ax=ax1)
+        xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - inputs" + pamMerged, color_dict=color_dict, settingsSpec=settingsSpec,ax=ax1)
 
-    # Extract axon connections
-    connectionType = "axons"
+    # Extract output connections
+    connectionType = "outputs"
     type = "post"
     visualizeSynapseConnectionTable(
         extractUniquePartnerConnectionStrengthIterated(targets, targetMode=targetMode, connections=connections, connectionType=connectionType, type=type, partnerMode=partnerMode, etcTreshhold=etcTreshhold, normalized=normalized, mergePAMSubtypes=mergePAMSubtypes, mergeOthers=mergeOthers),
-        xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - axonal outputs" + pamMerged, color_dict=color_dict,settingsSpec=settingsSpec,ax=ax2)
+        xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - outputs" + pamMerged, color_dict=color_dict,settingsSpec=settingsSpec,ax=ax2)
 
 
 ### functions for organizing and classifying synaptic connections
@@ -403,3 +448,149 @@ def classify_connections(connections, types=["PAM", "KC", "MBON"]):
             return 0
     connections['classification'] = connections.apply(get_classification, axis=1)
     return connections
+
+
+
+#### functions related to synapses
+
+def get_outlines(roiName, view='xz'):
+    """
+    Fetches the mesh for a region of interest (ROI) from neuprint and converts it to 2D outlines.
+
+    Args:
+        roiName (str): The name of the region of interest.
+        view (str): The view for the 2D projection, default is 'xz'.
+
+    Returns:
+        numpy.ndarray: An array containing the 2D outlines of the ROI.
+    """
+    ##fetch mesh from neuprint
+    mesh = neu.fetch_roi(roiName)
+    mesh.color = (.9, .9, .9, .75) #,(.9, .9, .9, .05)
+    ## convert to 2d outlines
+    roi2d = np.array(mesh.to_2d(alpha=2, view=view))
+    roi_outlines = np.append(roi2d, np.repeat(mesh.center[2], roi2d.shape[0]).reshape(roi2d.shape[0], 1), axis=1)
+    return roi_outlines
+
+def plotSynapseConfidence(synapseTable, mode="pre", show=True):
+    """
+    Plots a histogram of synapse confidences and prints the fifth percentile.
+
+    This function takes a DataFrame containing synapse data, plots a histogram of the
+    confidence values for either presynaptic or postsynaptic neurons, and calculates
+    the fifth percentile of these confidence values.
+
+    Parameters:
+    - synapseTable (pd.DataFrame): DataFrame containing synapse data with 'confidence_pre' or 'confidence_post'.
+    - mode (str): Specifies whether to use 'pre' for presynaptic or 'post' for postsynaptic confidence values. Default is 'pre'.
+    - show (bool): If True, the histogram will be displayed. Default is True.
+
+    Returns:
+    - float: The fifth percentile of the specified confidence values.
+    """
+    # Plotting histogram of frequency of each value in column 'confidence_pre' or 'confidence_post'
+    plt.hist(synapseTable['confidence_'+mode], bins=50)
+    fifth_percentile = np.percentile(synapseTable['confidence_'+mode], 5)
+    print("The fifth percentile of the 'confidence_"+mode+"' values is:", fifth_percentile)
+
+    plt.xlabel('Confidence '+mode)
+    plt.ylabel('Frequency')
+    plt.title('Histogram of Confidence '+mode+' Values')
+    if show:
+        plt.show()
+    return fifth_percentile
+
+def filterSynapseConfidence(synapseTable, mode="pre", percentile = 5):
+    perc = np.percentile(synapseTable['confidence_'+mode], percentile)
+    synapseTable = synapseTable[synapseTable['confidence_'+mode] > perc]
+    return synapseTable
+
+def plotSynapseGroups(synapseTables, title="Synapse Plot", colors=["red", "blue", "green", "yellow"], ROIoutlines=None, ROIname="ROI outline", coordinates=["x", "z"], showPlot=True):
+    """
+    Plots groups of synapses with different colors on a 2D plot.
+
+    Args:
+        synapseTables (list of pd.DataFrame): A list of DataFrames where each contains synapse data to be plotted.
+        title (str): The title of the plot.
+        colors (list of str): A list of colors for each group of synapses.
+        ROIoutlines (numpy.ndarray): An array containing the 2D outlines of the ROI to be plotted.
+        ROIname (str): The label for the ROI outlines in the legend.
+        coordinates (list of str): The coordinate names to be used for plotting, default is ["x", "z"].
+        showPlot (bool): If True, the plot will be displayed.
+
+    Returns:
+        None
+    """
+    p = figure(title=title)
+    i = 0
+    for synapses in synapseTables:
+        p.scatter(synapses[coordinates[0]+'_post'], synapses[coordinates[1]+'_post'], color=colors[i])
+        i = i+1
+    p.y_range.flipped = True
+    if ROIoutlines is not None:
+        p.scatter(ROIoutlines[:,0], ROIoutlines[:,1], legend_label=ROIname)
+    if showPlot:
+        show(p)
+
+def plotSynapseClassification(synapseTable, title="Synapse Classification", classificationColumn="classification", classificationInterval=[0, 1, 2, 3, 4], colors=["grey", "red", "blue", "green", "cyan"], labels=["Heterogenous", "Same Supertype", "Same Type", "Same Instance", "Same Body ID"], ROIoutlines=None, ROIname="ROI outline", coordinates=["x", "z"], showPlot=True, subtitle=None):
+    """
+    Plots synapses classified by similarity on a 2D plot with different colors for each classification category.
+
+    Args:
+        synapseTable (pd.DataFrame): A DataFrame containing synapse data with a classification column.
+        title (str): The title of the plot.
+        classificationColumn (str): The name of the column in synapseTable that contains classification data.
+        classificationInterval (list of int): A list of classification categories to be plotted.
+        colors (list of str): A list of colors for each classification category.
+        labels (list of str): A list of labels for each classification category.
+        ROIoutlines (numpy.ndarray): An array containing the 2D outlines of the ROI to be plotted.
+        ROIname (str): The label for the ROI outlines in the legend.
+        coordinates (list of str): The coordinate names to be used for plotting, default is ["x", "z"].
+        showPlot (bool): If True, the plot will be displayed.
+        subtitle (str): An optional subtitle for the plot.
+
+    Returns:
+        None
+    """
+    p = figure(title=title)
+    i = 0
+    for classification in classificationInterval:
+        synapses = synapseTable[(synapseTable[classificationColumn] == classification)]
+        n = synapses.index.size
+        p.scatter(synapses[coordinates[0]+'_post'], synapses[coordinates[1]+'_post'], color=colors[i], legend_label=f"{labels[i]}, {n}")
+        i += 1
+    p.y_range.flipped = True
+    if ROIoutlines is not None:
+        p.scatter(ROIoutlines[:,0], ROIoutlines[:,1], legend_label=ROIname)
+    if subtitle:
+        p.add_layout(Title(text=subtitle, align="center"), "below")
+    if showPlot:
+        show(p)
+
+
+def plotPAMTypePresynapses(synapseTables, pamType="PAM01", roi_outlines=None, roiName="MB"):
+    """
+    Plots the classification of presynapses for a specified PAM neuron type.
+
+    This function processes synapse tables to filter and classify presynapses of a given PAM type,
+    then plots the classification results using two different coordinate systems.
+
+    Args:
+        synapseTables (list of pd.DataFrame): A list of DataFrames containing synapse data.
+        pamType (str): The PAM neuron type to be plotted. Defaults to "PAM01".
+        roi_outlines (list of numpy.ndarray): A list containing the 2D outlines of the ROI to be plotted.
+            Defaults to None, which will be interpreted as [None, None].
+        roiName (str): The label for the ROI outlines in the legend. Defaults to "MB".
+
+    Returns:
+        None
+    """
+    collapsedPAMpresynapses = collapseNeuronNames(synapseTables.copy(), [pamType], ["type"], sides=["pre", "post"], suffix="")
+    filteredPAMpresynapses = collapsedPAMpresynapses[collapsedPAMpresynapses["type_pre"] == pamType].copy()
+    filteredPAMpresynapses.drop(columns='classification', inplace=True)
+    filteredPAMpresynapses = classify_connections(filteredPAMpresynapses)
+    title = pamType + " Presynapses Classification"
+    if roi_outlines is None:
+        roi_outlines = [None, None]
+    plotSynapseClassification(filteredPAMpresynapses, title=title, subtitle="Same Supertype: " + pamType + "-PAM, Same Type: " + pamType + "-" + pamType, ROIoutlines=roi_outlines[0], ROIname=roiName)
+    plotSynapseClassification(filteredPAMpresynapses, title=title, coordinates=["x", "y"], ROIoutlines=roi_outlines[1], ROIname=roiName)
