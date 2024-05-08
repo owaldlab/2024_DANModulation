@@ -17,6 +17,8 @@ from bokeh.models import Title
 import numpy as np
 
 import pickle
+import matplotlib.colors as mcolors
+import itertools
 
 import re
 
@@ -231,6 +233,30 @@ PAM_colors = {
 def getPAMcolors():
     return PAM_colors
 
+import matplotlib.colors as mcolors
+
+def generateColorShades(base_color, num_shades=4, lighten=False):
+    # Convert the base color to RGBA
+    rgba_color = mcolors.to_rgba(base_color)
+    # Convert RGBA to HSV
+    hsv_color = mcolors.rgb_to_hsv(rgba_color[:3])
+    
+    shades = []
+    step = (0.8 / num_shades) if lighten else (-0.8 / num_shades)  # Smaller step for more nuanced shade differences
+    
+    for i in range(num_shades):
+        # Modify the value component of the HSV color
+        new_v = max(0, min(1, hsv_color[2] + (step * i)))
+        new_color = mcolors.hsv_to_rgb([hsv_color[0], hsv_color[1], new_v])
+        # Ensure RGB values are within the 0-1 range
+        new_color = [max(0, min(1, channel)) for channel in new_color]
+        # Convert back to RGBA with original alpha and ensure they are in the correct range
+        shades.append((new_color[0], new_color[1], new_color[2], rgba_color[3]))
+    
+    return shades
+
+
+
 MB_rois=["a'L(R)","aL(R)","b'L(R)","bL(R)","gL(R)","CA(L)","a'L(L)","aL(L)","b'L(L)","bL(L)","gL(L)", "CA(R)", "PED(R)"]
 non_MB_rois=["CRE(L)", "CRE(R)", "EB", "LAL(R)", "SIP(L)", "SIP(R)", "SLP(R)", "SMP(L)", "SMP(R)", "LAL(L)"]
 
@@ -242,11 +268,19 @@ def getROIs(ROI = "", mode = "array"):
             (string) mode: Specify the formatting of the ROIs. Defaults to "array", an array of strings. "regexOr" returns a single string of all ROIs separated by the '|' character.     
     """
     roi = None
+    found = False
     if ROI == "MB":
         rois = MB_rois
+        found = True
     if ROI == "non_MB" or ROI == "non MB" or ROI == "non-MB" or ROI == "nonMB":
         rois = non_MB_rois
+        found = True
+    if isinstance(ROI, list) and mode == "neuronTypesOr":
+        found = True
     
+    if not found:   
+        raise ValueError("Specified ROI set not found. Please specify either 'MB' or 'non_MB' or add additional ROIs in getROIs function.")
+
     if mode=="array":
         return rois
     if mode == "regexOr":
@@ -256,6 +290,13 @@ def getROIs(ROI = "", mode = "array"):
             roi = re.sub(r'[\(\)]', lambda x: "\\" + x.group(), roi)
             roiString += "|" + roi
         return roiString
+    if mode == "neuronTypesOr":
+        neuronTypesString = ROI[0]
+        neuronTypesString = re.sub(r'[\(\)]', lambda x: "\\" + x.group(), neuronTypesString)
+        for neurontype in ROI[1:]:
+            neurontype = re.sub(r'[\(\)]', lambda x: "\\" + x.group(), neurontype)
+            neuronTypesString += "|" + neurontype
+        return neuronTypesString
 
 def visualizeSynapseConnectionTable(connectionTable, title="PAM-PAM Synapse Statistic", titleSuffix="", xLabel="None", yLabel='None', color_dict=PAM_colors, legend_title="", settingsSpec=None, ax = None):
     """
@@ -413,7 +454,45 @@ def decimateConnections(connections, percentage=10):
 
     return decimated_connections
 
-def classify_connections(connections, types=["PAM", "KC", "MBON"]):
+
+# by default, yields 0 for MB, 1 for non-MB
+def classifySynapseROIs(connections, roiClasses = ["MB","non-MB"], classificationColumnName = "roiClassification", synapseSide = "pre"):
+    """
+    Classifies synapses based on their region of interest (ROI) into predefined classes.
+
+    This function adds a new column to the 'connections' DataFrame indicating the classification of each synapse
+    based on the ROI it belongs to. The classification is determined by checking if the ROI of the synapse
+    matches any of the patterns specified in the 'roiClasses' list.
+
+    Parameters:
+    - connections (pd.DataFrame): The DataFrame containing synapse data.
+    - roiClasses (list of str): List of ROI classes to classify synapses into. Default is ["MB", "non-MB"].
+    - classificationColumnName (str): Name of the new column to be added to the DataFrame for storing classification results.
+    - synapseSide (str): Specifies whether to classify based on the 'pre' or 'post' side of the synapse. Default is 'pre'.
+
+    Returns:
+    - pd.DataFrame: The modified DataFrame with an additional column indicating the ROI classification of each synapse.
+    """
+
+    connections[classificationColumnName] = 0
+    roiClassesTerms = []
+    for roiClass in roiClasses:
+        roiClassesTerms.append(getROIs(roiClass,mode="regexOr")) ### gets associated list of ROIs in a specified ROI class)
+    #print(roiClassesTerms) 
+    def get_classification(row):
+        if row['roi_'+synapseSide]==None:
+            return None
+        i = 0
+        for roiClassTerm in roiClassesTerms:
+            #print(roiClassTerm)
+            if re.search(roiClassTerm, row['roi_'+synapseSide]):
+                return i
+            i=+1
+        return None        
+    connections[classificationColumnName] = connections.apply(get_classification, axis=1)
+    return connections
+
+def classifySynapseConnectivity(connections, types=["PAM", "KC", "MBON"], classificationColumnName = "connectivityClassification"):
     """
     Classify connections based on neuron types, subtypes, instances, and body IDs.
 
@@ -434,7 +513,7 @@ def classify_connections(connections, types=["PAM", "KC", "MBON"]):
     Returns:
     - pd.DataFrame: The modified DataFrame with an additional 'classification' column.
     """
-    connections['classification'] = 0
+    connections[classificationColumnName] = 0
     def get_classification(row):
         if row['bodyId_pre'] == row['bodyId_post']:
             return 4
@@ -446,14 +525,14 @@ def classify_connections(connections, types=["PAM", "KC", "MBON"]):
             return 1
         else:
             return 0
-    connections['classification'] = connections.apply(get_classification, axis=1)
+    connections[classificationColumnName] = connections.apply(get_classification, axis=1)
     return connections
 
 
 
 #### functions related to synapses
 
-def get_outlines(roiName, view='xz'):
+def getAnatomicalOutlines(roiName, view='xz'):
     """
     Fetches the mesh for a region of interest (ROI) from neuprint and converts it to 2D outlines.
 
@@ -521,6 +600,8 @@ def plotSynapseGroups(synapseTables, title="Synapse Plot", colors=["red", "blue"
     Returns:
         None
     """
+    print("This function will become deprecated, please use plotClassifiedSynapses instead.")
+
     p = figure(title=title)
     i = 0
     for synapses in synapseTables:
@@ -531,6 +612,8 @@ def plotSynapseGroups(synapseTables, title="Synapse Plot", colors=["red", "blue"
         p.scatter(ROIoutlines[:,0], ROIoutlines[:,1], legend_label=ROIname)
     if showPlot:
         show(p)
+
+
 
 def plotSynapseClassification(synapseTable, title="Synapse Classification", classificationColumn="classification", classificationInterval=[0, 1, 2, 3, 4], colors=["grey", "red", "blue", "green", "cyan"], labels=["Heterogenous", "Same Supertype", "Same Type", "Same Instance", "Same Body ID"], ROIoutlines=None, ROIname="ROI outline", coordinates=["x", "z"], showPlot=True, subtitle=None):
     """
@@ -552,6 +635,7 @@ def plotSynapseClassification(synapseTable, title="Synapse Classification", clas
     Returns:
         None
     """
+    print("This function will become deprecated, please use plotClassifiedSynapses instead.")
     p = figure(title=title)
     i = 0
     for classification in classificationInterval:
@@ -585,12 +669,86 @@ def plotPAMTypePresynapses(synapseTables, pamType="PAM01", roi_outlines=None, ro
     Returns:
         None
     """
+    print("This function will become deprecated, please use plotClassifiedSynapses instead.")
     collapsedPAMpresynapses = collapseNeuronNames(synapseTables.copy(), [pamType], ["type"], sides=["pre", "post"], suffix="")
     filteredPAMpresynapses = collapsedPAMpresynapses[collapsedPAMpresynapses["type_pre"] == pamType].copy()
     filteredPAMpresynapses.drop(columns='classification', inplace=True)
-    filteredPAMpresynapses = classify_connections(filteredPAMpresynapses)
+    filteredPAMpresynapses = classifySynapseConnectivity(filteredPAMpresynapses)
     title = pamType + " Presynapses Classification"
     if roi_outlines is None:
         roi_outlines = [None, None]
     plotSynapseClassification(filteredPAMpresynapses, title=title, subtitle="Same Supertype: " + pamType + "-PAM, Same Type: " + pamType + "-" + pamType, ROIoutlines=roi_outlines[0], ROIname=roiName)
     plotSynapseClassification(filteredPAMpresynapses, title=title, coordinates=["x", "y"], ROIoutlines=roi_outlines[1], ROIname=roiName)
+
+
+### multiple inputGroups not implemented yet, please pass array of just one input group for now
+def plotClassifiedSynapses(inputGroups, title="Synapse Classification", inputGroupColors=[None],
+                           filterConfig={
+                               'classificationColumns': ['roiClassification', 'connectivityClassification'],
+                               'bounds': [2, 5],
+                               'directional': [False, False],
+                               'direction': [None, None],
+                               'colorScheme': ['#c6cfd0', '#ADD8E6', '#87CEEB', '#4682B4', '#000080', '#e2d3d5', '#FA8072', '#FF6347', '#FF0000', '#8B0000'],
+                               'classificationLabels': [
+                                   ["MB", "non-MB"],
+                                   ["Heterogenous", "Same Supertype", "Same Type", "Same Instance", "Same Body ID"]
+                               ]}, 
+                               ROIoutlines=None, ROIname="ROI outline", 
+                               coordinates=["x", "z"], 
+                               showPlot=True, subtext=None, showLegend = True, showTitle=True,
+                               ax = None):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
+        gui = False
+    else:
+        gui = True
+        fig = ax.figure
+    
+
+    ###update subtext
+    subtext = subtext + " Classification Columns: "
+    for col in filterConfig['classificationColumns']:
+        subtext = subtext + " ["+col+","
+    subtext = subtext + "]"
+
+    if subtext:
+        ax.text(0.5, -0.1, subtext, fontsize=10, color='grey', ha='center', transform=ax.transAxes)
+
+    # for now, only single inputs are supported
+    inputSynapses = inputGroups[0]
+
+    classificationGroupIndex = 0
+    # iterates through all combinations of classification dimensions and plots all synapses that fall within it
+    totalN = 0
+    for classificationIndices in itertools.product(*[range(bound) for bound in filterConfig['bounds']]):
+        queryString = ""
+        for i, classificationColumn in enumerate(filterConfig['classificationColumns']):
+            if i != 0:
+                queryString += " and "
+            queryString += f"{classificationColumn} == {classificationIndices[i]}"
+        print(queryString)
+        synapses = inputSynapses.query(queryString)
+        n = synapses.index.size
+        totalN = totalN + n
+        # plot synapses in classification group
+        ax.scatter(
+            synapses[coordinates[0] + '_pre'], synapses[coordinates[1] + '_pre'],
+            color=filterConfig['colorScheme'][classificationGroupIndex],
+            label=f"{filterConfig['classificationLabels'][0][classificationIndices[0]] + ', ' + filterConfig['classificationLabels'][1][classificationIndices[1]]}, {n}",
+            s = 3
+        )
+
+        classificationGroupIndex += 1
+
+    if ROIoutlines is not None:
+        ax.scatter(ROIoutlines[:, 0], ROIoutlines[:, 1], color='black', label=ROIname, s=1)
+    if showTitle:
+        ax.set_title(f"{title}, N={totalN}")
+
+    if showLegend:
+        ax.legend(loc='upper right')
+    ax.set_xlabel(coordinates[0])
+    ax.set_ylabel(coordinates[1])
+    ax.invert_yaxis()
+    if gui == False and showPlot == True:
+        plt.show()
