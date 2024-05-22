@@ -40,7 +40,7 @@ def loadConnections(typeA="^PAM.*", typeB="^PAM.*", silent=True,bidirectional=Fa
     try:
         #### hackily handles most common case where PAM-PAM or PAM-All connections are requested, loading them from pre-created pickle
         if typeA=="^PAM.*" and typeB=="^PAM.*" and cached:
-            with open('pickles/PAM_All_Connections.pkl', 'rb') as file:
+            with open('pickles/PAM_PAM_Connections.pkl', 'rb') as file:
                 PAM_PAM_Connections = pickle.load(file)
             return PAM_PAM_Connections
         if typeA=="^PAM.*" and typeB=="^.*" and cached:
@@ -61,8 +61,8 @@ def loadConnections(typeA="^PAM.*", typeB="^PAM.*", silent=True,bidirectional=Fa
         neuron_df, conn_df = fetch_adjacencies(NC(status='Traced', type=typeA, regex=True), NC(status='Traced', type=typeB, regex=True))
         conn_df = neu.merge_neuron_properties(neuron_df, conn_df, ['type', 'instance'])
 
-    loadedConnections = conn_df[conn_df['weight']]
-    loadedConnections.sort_values('weight', ascending=False, inplace=True)
+    loadedConnections = conn_df
+    #loadedConnections.sort_values('weight', ascending=False, inplace=True)
     if not silent:
         print(neuron_df)
         print(conn_df)
@@ -391,14 +391,14 @@ def plotPAMStatistic(targets, targetMode = "type",etcTreshhold=0.03, partnerMode
     type = "pre"
     visualizeSynapseConnectionTable(
         extractUniquePartnerConnectionStrengthIterated(targets, targetMode=targetMode,connections=connections, connectionType=connectionType, type=type, partnerMode=partnerMode, etcTreshhold=etcTreshhold, normalized=normalized, mergePAMSubtypes=mergePAMSubtypes, mergeOthers=mergeOthers),
-        xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - inputs" + pamMerged, color_dict=color_dict, settingsSpec=settingsSpec,ax=ax1)
+        xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - inputs" + pamMerged, color_dict=color_dict, settingsSpec=settingsSpec,ax=ax2)
 
     # Extract output connections
     connectionType = "outputs"
     type = "post"
     visualizeSynapseConnectionTable(
         extractUniquePartnerConnectionStrengthIterated(targets, targetMode=targetMode, connections=connections, connectionType=connectionType, type=type, partnerMode=partnerMode, etcTreshhold=etcTreshhold, normalized=normalized, mergePAMSubtypes=mergePAMSubtypes, mergeOthers=mergeOthers),
-        xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - outputs" + pamMerged, color_dict=color_dict,settingsSpec=settingsSpec,ax=ax2)
+        xLabel="PAM type", yLabel=yLabel, title=title, titleSuffix=" - outputs" + pamMerged, color_dict=color_dict,settingsSpec=settingsSpec,ax=ax1)
 
 
 ### functions for organizing and classifying synaptic connections
@@ -474,6 +474,7 @@ def classifySynapseROIs(connections, roiClasses = ["MB","non-MB"], classificatio
     - pd.DataFrame: The modified DataFrame with an additional column indicating the ROI classification of each synapse.
     """
 
+    connections = connections.copy()
     connections[classificationColumnName] = 0
     roiClassesTerms = []
     for roiClass in roiClasses:
@@ -513,6 +514,7 @@ def classifySynapseConnectivity(connections, types=["PAM", "KC", "MBON"], classi
     Returns:
     - pd.DataFrame: The modified DataFrame with an additional 'classification' column.
     """
+    connections = connections.copy()
     connections[classificationColumnName] = 0
     def get_classification(row):
         if row['bodyId_pre'] == row['bodyId_post']:
@@ -615,7 +617,7 @@ def plotSynapseGroups(synapseTables, title="Synapse Plot", colors=["red", "blue"
 
 
 
-def plotSynapseClassification(synapseTable, title="Synapse Classification", classificationColumn="classification", classificationInterval=[0, 1, 2, 3, 4], colors=["grey", "red", "blue", "green", "cyan"], labels=["Heterogenous", "Same Supertype", "Same Type", "Same Instance", "Same Body ID"], ROIoutlines=None, ROIname="ROI outline", coordinates=["x", "z"], showPlot=True, subtitle=None):
+def plotSynapseClassification(synapseTable, title="Synapse Classification", classificationColumn="connectivityClassification", classificationInterval=[0, 1, 2, 3, 4], colors=["grey", "red", "blue", "green", "cyan"], labels=["Heterogenous", "Same Supertype", "Same Type", "Same Instance", "Same Body ID"], ROIoutlines=None, ROIname="ROI outline", coordinates=["x", "z"], showPlot=True, subtitle=None):
     """
     Plots synapses classified by similarity on a 2D plot with different colors for each classification category.
 
@@ -652,7 +654,7 @@ def plotSynapseClassification(synapseTable, title="Synapse Classification", clas
         show(p)
 
 
-def plotPAMTypePresynapses(synapseTables, pamType="PAM01", roi_outlines=None, roiName="MB"):
+def plotPAMTypePresynapses(synapseTables, pamType="PAM01", roi_outlines=None, roiName="MB",classificationColumnName = "connectivityClassification"):
     """
     Plots the classification of presynapses for a specified PAM neuron type.
 
@@ -672,8 +674,8 @@ def plotPAMTypePresynapses(synapseTables, pamType="PAM01", roi_outlines=None, ro
     print("This function will become deprecated, please use plotClassifiedSynapses instead.")
     collapsedPAMpresynapses = collapseNeuronNames(synapseTables.copy(), [pamType], ["type"], sides=["pre", "post"], suffix="")
     filteredPAMpresynapses = collapsedPAMpresynapses[collapsedPAMpresynapses["type_pre"] == pamType].copy()
-    filteredPAMpresynapses.drop(columns='classification', inplace=True)
-    filteredPAMpresynapses = classifySynapseConnectivity(filteredPAMpresynapses)
+    filteredPAMpresynapses.drop(columns=classificationColumnName, inplace=True)
+    filteredPAMpresynapses = classifySynapseConnectivity(filteredPAMpresynapses,classificationColumnName=classificationColumnName)
     title = pamType + " Presynapses Classification"
     if roi_outlines is None:
         roi_outlines = [None, None]
@@ -696,7 +698,8 @@ def plotClassifiedSynapses(inputGroups, title="Synapse Classification", inputGro
                                ROIoutlines=None, ROIname="ROI outline", 
                                coordinates=["x", "z"], 
                                showPlot=True, subtext=None, showLegend = True, showTitle=True,
-                               ax = None):
+                               ax = None,
+                               dotSize = 4):
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 6))
         gui = False
@@ -706,9 +709,9 @@ def plotClassifiedSynapses(inputGroups, title="Synapse Classification", inputGro
     
 
     ###update subtext
-    subtext = subtext + " Classification Columns: "
+    subtext = subtext + " Classification Columns: ["
     for col in filterConfig['classificationColumns']:
-        subtext = subtext + " ["+col+","
+        subtext = subtext + col+","
     subtext = subtext + "]"
 
     if subtext:
@@ -726,7 +729,7 @@ def plotClassifiedSynapses(inputGroups, title="Synapse Classification", inputGro
             if i != 0:
                 queryString += " and "
             queryString += f"{classificationColumn} == {classificationIndices[i]}"
-        print(queryString)
+        #print(queryString)
         synapses = inputSynapses.query(queryString)
         n = synapses.index.size
         totalN = totalN + n
@@ -735,7 +738,7 @@ def plotClassifiedSynapses(inputGroups, title="Synapse Classification", inputGro
             synapses[coordinates[0] + '_pre'], synapses[coordinates[1] + '_pre'],
             color=filterConfig['colorScheme'][classificationGroupIndex],
             label=f"{filterConfig['classificationLabels'][0][classificationIndices[0]] + ', ' + filterConfig['classificationLabels'][1][classificationIndices[1]]}, {n}",
-            s = 3
+            s = dotSize
         )
 
         classificationGroupIndex += 1
@@ -746,7 +749,7 @@ def plotClassifiedSynapses(inputGroups, title="Synapse Classification", inputGro
         ax.set_title(f"{title}, N={totalN}")
 
     if showLegend:
-        ax.legend(loc='upper right')
+        ax.legend(loc='upper right', markerscale=3)
     ax.set_xlabel(coordinates[0])
     ax.set_ylabel(coordinates[1])
     ax.invert_yaxis()

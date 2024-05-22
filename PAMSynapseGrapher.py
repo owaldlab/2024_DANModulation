@@ -300,6 +300,8 @@ class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
         conn = PAM_All_Connections if vis_mode == 'All PAM synapses' else PAM_PAM_Connections
         settings_spec = "Visualization mode: " + vis_mode + ", "
         selected_targets = [item.text() for item in self.targets_list_widget.selectedItems()]
+        
+        print(f"Initial conn shape: {conn.shape}")
 
         ### 0 for all synapses, 1 for within MB, 2 for outside MB
         data_filtering_mode = self.data_filtering_radio.checkedId()
