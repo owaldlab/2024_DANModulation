@@ -26,7 +26,7 @@ import os
 load_dotenv()
 
 ## fetching Janelia client
-#client = neu.Client('https://neuprint.janelia.org/', dataset='hemibrain:v1.2.1', token=os.environ.get("JANELIA_PAT"))
+client = neu.Client('https://neuprint.janelia.org/', dataset='hemibrain:v1.2.1', token=os.environ.get("JANELIA_PAT"))
 
 ## load relevant data frames
 all_neurons = loadPickle('all_neurons')
@@ -41,10 +41,10 @@ all_PAM_All_presynapses = neu.merge_neuron_properties(all_neurons,all_PAM_All_pr
 all_PAM_All_postsynapses = neu.merge_neuron_properties(all_neurons,all_PAM_All_postsynapses,properties=["type", "instance"])
 
 print("Loading MB outlines.")
-#MB_outlines_xz = getAnatomicalOutlines("MB")
-#MB_outlines_xy = getAnatomicalOutlines("MB",'xy')
-MB_outlines_xz = None
-MB_outlines_xy = None
+MB_outlines_xz = loadPickle("MB_outlines_xz")
+MB_outlines_xy = loadPickle("MB_outlines_xy")
+#MB_outlines_xz = None
+#MB_outlines_xy = None
 print("Finished loading MB outlines.")
 
 
@@ -208,13 +208,13 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
         self.anatomic_outlines_list.setSelectionMode(QtWidgets.QAbstractItemView.MultiSelection)
         self.anatomic_outlines_list.addItems(possibleOutlines.keys())
 
-        self.target_synapse_side_radio = QtWidgets.QButtonGroup()
-        target_synapse_side_label = QtWidgets.QLabel("Target pre or post?:")
-        target_presynapses_radio = QtWidgets.QRadioButton('pre')
-        target_postsynapses_radio = QtWidgets.QRadioButton('post')
-        self.target_synapse_side_radio.addButton(target_presynapses_radio, id=0)
-        self.target_synapse_side_radio.addButton(target_postsynapses_radio, id=1)
-        target_presynapses_radio.setChecked(True)
+        #self.target_synapse_side_radio = QtWidgets.QButtonGroup()
+        #target_synapse_side_label = QtWidgets.QLabel("Target pre or post?:")
+        #target_presynapses_radio = QtWidgets.QRadioButton('pre')
+        #target_postsynapses_radio = QtWidgets.QRadioButton('post')
+        #self.target_synapse_side_radio.addButton(target_presynapses_radio, id=0)
+        #self.target_synapse_side_radio.addButton(target_postsynapses_radio, id=1)
+        #target_presynapses_radio.setChecked(True)
 
         
         # Target Mode Radio Buttons
@@ -266,6 +266,7 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
 
         # Title Checkbox
         self.title_checkbox = QtWidgets.QCheckBox('Title')
+        self.title_checkbox.setChecked(True)
 
         # Update Plot Button
         self.update_button = QtWidgets.QPushButton('Update Plot')
@@ -295,13 +296,13 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
 
         ## 
         settings_layout.addWidget(target_list_label)
-        settings_layout.addWidget(self.targets_list_widget)
         settings_layout.addWidget(target_mode_label)
         settings_layout.addWidget(type_radio)
         settings_layout.addWidget(instance_radio)
-        settings_layout.addWidget(target_synapse_side_label)
-        settings_layout.addWidget(target_presynapses_radio)
-        settings_layout.addWidget(target_postsynapses_radio)
+        settings_layout.addWidget(self.targets_list_widget)
+        #settings_layout.addWidget(target_synapse_side_label)
+        #settings_layout.addWidget(target_presynapses_radio)
+        #settings_layout.addWidget(target_postsynapses_radio)
 
         """
         ## partner visualization settings
@@ -368,20 +369,45 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
         vis_mode = 'PAM-PAM synapses' if self.vis_mode_radio.checkedId() == 0 else 'All PAM synapses'
         synapseSideMode = 'pre' if self.synapse_side_radio.checkedId() == 0 else 'post'
         
-        opposite_side = None
-
         if synapseSideMode == "pre":
             opposite_side = "post"
         elif synapseSideMode == "post":
             opposite_side = "pre"
 
-        settings_spec = "Visualization mode: " + vis_mode + ", " + "Synapses mode: "+synapseSideMode+", "
         selected_targets = [item.text() for item in self.targets_list_widget.selectedItems()]
 
-        ### anatomical filter
-        ### 0 for all synapses, 1 for within MB, 2 for outside MB
+        ##### anatomical filter??
         data_filtering_mode = self.data_filtering_radio.checkedId()
 
+        #### neuronal filter??
+        selected_targets = [item.text() for item in self.targets_list_widget.selectedItems()]
+        
+        targetResId = self.target_mode_radio.checkedId()  #0, 'type'; 1, 'instance'
+        targetResolution = ""
+        if targetResId == 0:
+            targetResolution = 'type'
+        elif targetResId == 1:
+            targetResolution = 'instance'
+        """
+        target_synapse_side_radio  = self.target_synapse_side_radio.checkedId() #0 is pre, 1 is post
+        targetSynapseSide = ""
+        if target_synapse_side_radio == 0:
+            targetSynapseSide = 'pre'
+        elif target_synapse_side_radio == 1:
+            targetSynapseSide = 'post'
+        print()
+        print(vis_mode+" "+targetSynapseSide)
+        """
+        
+        
+        # Filtering Pipeline
+        #print(f"Initial conn shape: {conn.shape}")
+
+        opposite_side = None
+
+        
+        ## anatomical filter
+        ### 0 for all synapses, 1 for within MB, 2 for outside MB
         conn.fillna("MB", inplace=True)
 
         if data_filtering_mode == 1:
@@ -391,28 +417,22 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
             filter = getROIs("nonMB","regexOr")
             conn = conn[conn['roi_'+synapseSideMode].str.contains(filter, case=False)]
 
+        #print(f"After anatomical filtering conn shape: {conn.shape}")
+        
         ### neuronal filter
-        selected_targets = [item.text() for item in self.targets_list_widget.selectedItems()]
-        
-        targetResId = self.target_mode_radio.checkedId()  #0, 'type'; 1, 'instance'
-        targetResolution = ""
-        if targetResId == 0:
-            targetResolution = 'type'
-        elif targetResId == 1:
-            targetResolution = 'instance'
-        
-        target_synapse_side_radio  = self.target_synapse_side_radio.checkedId() #0 is pre, 1 is post
-        targetSynapseSide = ""
-        if target_synapse_side_radio == 0:
-            targetSynapseSide = 'pre'
-        elif target_synapse_side_radio == 1:
-            targetSynapseSide = 'post'
-
+        targetName = ""
+        targetFiltering = False
         if selected_targets != []:
             ## yields a regex search string that matches for any of all of selected_targets
             searchString = getROIs(selected_targets,mode = "neuronTypesOr")
-            conn = conn[conn[targetResolution + '_' + targetSynapseSide].str.contains(searchString, regex=True)]
-        
+            #print("Searching "+targetResolution + '_' + synapseSideMode+" for "+searchString)
+            #print(conn)
+            conn = conn[conn[targetResolution + '_' + synapseSideMode].str.contains(searchString, regex=True)]
+            targetName = "/".join(selected_targets)
+            targetFiltering = True
+
+        #print(f"After neuronal filtering conn shape: {conn.shape}")
+
         # Clear the previous figures
         self.figure1.clear()
         self.figure2.clear()
@@ -425,7 +445,14 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
         conn = classifySynapseROIs(conn,synapseSide=synapseSideMode)
         conn = classifySynapseConnectivity(conn)
 
-        title = vis_mode + ", " + synapseSideMode
+        title = vis_mode + ", " 
+        if targetFiltering == True:
+            title = title+targetName+ " "+synapseSideMode+"synapses"
+        else:
+            title = title + synapseSideMode+"synapses"
+
+        settings_spec = "Visualization mode: " + vis_mode + ", " + "Synapses mode: "+synapseSideMode+", " #+ "Synapse target filter mode: "+targetSynapseSide+", "
+        
 
         plotClassifiedSynapses(
             [conn],
@@ -434,8 +461,8 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
                 'classificationColumns' : ['roiClassification','connectivityClassification'],
                 'bounds' : [2,5],
                 'directional' : [False, False],
-                'direction' : [None, None],
-                'colorScheme' : ['#c6cfd0','#ADD8E6','#87CEEB','#4682B4','#000080','#e2d3d5','#FA8072','#FF6347','#FF0000','#8B0000'],
+                'direction' : [None, None] ,
+                'colorScheme' : ['#E0F7FA', '#87CEEB', '#4682B4', '#0000FF', '#000000', '#D3B0B0', '#FFB6C1', '#FF6347', '#8B0000', '#800080'],
                 'classificationLabels' : [
                     ["MB","non-MB"],
                     ["Heterogenous", "Same Supertype", "Same Type", "Same Instance", "Same Body ID"]]
@@ -457,7 +484,7 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
                 'bounds' : [2,5],
                 'directional' : [False, False],
                 'direction' : [None, None],
-                'colorScheme' : ['#c6cfd0','#ADD8E6','#87CEEB','#4682B4','#000080','#e2d3d5','#FA8072','#FF6347','#FF0000','#8B0000'],
+                'colorScheme' : ['#E0F7FA', '#87CEEB', '#4682B4', '#0000FF', '#000000', '#D3B0B0', '#FFB6C1', '#FF6347', '#8B0000', '#800080'],
                 'classificationLabels' : [
                     ["MB","non-MB"],
                     ["Heterogenous", "Same Supertype", "Same Type", "Same Instance", "Same Body ID"]]
@@ -472,8 +499,8 @@ class PAMSynapsePlotterWindow(QtWidgets.QMainWindow):
             )
 
         
-        self.figure1.subplots_adjust(left=0.15, right=0.8,top=0.95,bottom=0.07)  # Adjust these values as needed
-        self.figure2.subplots_adjust(left=0.15, right=0.8,top=0.95,bottom=0.07)  # Adjust these values as needed
+        self.figure1.subplots_adjust(left=0.15, right=0.8,top=0.95,bottom=0.1)  # Adjust these values as needed
+        self.figure2.subplots_adjust(left=0.15, right=0.8,top=0.95,bottom=0.1)  # Adjust these values as needed
 
         self.canvas1.draw()  # Render the plot
         self.canvas2.draw()  # Render the plot
