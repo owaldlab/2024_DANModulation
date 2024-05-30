@@ -5,7 +5,7 @@ It features two python scripts with a GUI: PAMConnectionGrapher and PAMSynapsePl
 
 They allow quick, and dynamic visualization of connectomic information across multiple dimensions and employing different filter.
 - Connection Grapher:
-  - Visualizes a stacked bar chart of incoming and outgoing connections of any PAM type or instance to all other types or instances of PAM or any neuron. It furthermore allows anatomical filtering (mushroom body, non mushroom body). 
+  - Visualizes a stacked bar chart of incoming and outgoing connections of any PAM neuron type or instance to all other types or instances of PAM or any neuron. It furthermore allows anatomical filtering (mushroom body, non mushroom body). 
 - Synapse Plotter:
   - Visualizes 2D projections of synapses to/from any PAM instance or type, coloring them based on connection modality (e.g. same type, same instance, etc.) and anatomical location (mushroom body, non-mushroom body).
   - Allows anatomical filtering.
@@ -97,4 +97,5 @@ deactivate
 - If you need to install additional packages, use `pip install <package-name>` and then update `requirements.txt` with `pip freeze > requirements.txt`.
 - Make sure to always activate the virtual environment when working on this project to avoid conflicts with other projects' dependencies.
 
----
+
+Created by Tim Farkas during his time at Owald Lab.
