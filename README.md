@@ -1,6 +1,6 @@
 # 2024_DANModulation
 
-This project analyzes the connective properties of PAM-type dopaminergic neurons in *Drosophila Elegans*, using the *Drosophila* Hemibrain connectome dataset.
+This project analyzes the connective properties of PAM-type dopaminergic neurons in *Drosophila Melanogaster*, using the *Drosophila* Hemibrain connectome dataset.
 It features two python scripts with a GUI: PAMConnectionGrapher and PAMSynapsePlotter.
 
 They allow quick, and dynamic visualization of connectomic information across multiple dimensions and employing different filters.
