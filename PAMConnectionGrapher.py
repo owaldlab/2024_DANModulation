@@ -141,7 +141,7 @@ class PAMConnectionGrapherWindow(QtWidgets.QMainWindow):
         super().__init__()
 
         # Set up the main window
-        self.setWindowTitle('PAM Synapse Grapher')
+        self.setWindowTitle('PAM Connection Grapher')
         self.setGeometry(100, 100, 800, 600)
 
         # Create the central widget and layout
