@@ -136,7 +136,7 @@ possibleTargetsInstance = {
 
 
 # Create the main window class
-class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
+class PAMConnectionGrapherWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
 
@@ -344,6 +344,6 @@ class PAMSynapseGrapherWindow(QtWidgets.QMainWindow):
 
 # Create and show the application
 app = QtWidgets.QApplication([])
-window = PAMSynapseGrapherWindow()
+window = PAMConnectionGrapherWindow()
 window.show()
 app.exec_()
