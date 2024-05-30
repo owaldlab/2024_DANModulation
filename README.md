@@ -98,4 +98,4 @@ deactivate
 - Make sure to always activate the virtual environment when working on this project to avoid conflicts with other projects' dependencies.
 
 
-Created by Tim Farkas during his time at Owald Lab.
+Created by Tim Farkas at Owald Lab under supervision by David Owald, Marcel Heim, Sri R. Jagannathan
