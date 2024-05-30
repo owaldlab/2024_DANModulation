@@ -10,7 +10,7 @@ They allow quick, and dynamic visualization of connectomic information across mu
   - Visualizes 2D projections of synapses to/from any PAM instance or type, coloring them based on connection modality (e.g. same type, same instance, etc.) and anatomical location (mushroom body, non-mushroom body).
   - Allows anatomical filtering.
 
-![Screenshot of GUI tools](Screenshot 1.png)
+![Screenshot of GUI tools]("Screenshot 1.png")
 
 ---
 
