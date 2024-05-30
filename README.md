@@ -3,7 +3,7 @@
 This project analyzes the connective properties of PAM-type dopaminergic neurons in *Drosophila Elegans*, using the *Drosophila* Hemibrain connectome dataset.
 It features two python scripts with a GUI: PAMConnectionGrapher and PAMSynapsePlotter.
 
-They allow quick, and dynamic visualization of connectomic information across multiple dimensions and employing different filter.
+They allow quick, and dynamic visualization of connectomic information across multiple dimensions and employing different filters.
 - Connection Grapher:
   - Visualizes a stacked bar chart of incoming and outgoing connections of any PAM neuron type or instance to all other types or instances of PAM or any neuron. It furthermore allows anatomical filtering (mushroom body, non mushroom body). 
 - Synapse Plotter:
@@ -41,7 +41,7 @@ Replace `<your-repo-url>` with the URL of your Git repository.
 A virtual environment to manage the project's dependencies. Run the following commands:
 
 ```sh
-pipx install virtualenv
+pip install virtualenv
 ```
 
 ### 3. Navigate to the Project Directory
